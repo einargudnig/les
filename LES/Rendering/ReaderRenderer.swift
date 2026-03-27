@@ -93,7 +93,23 @@ final class ReaderRenderer: Sendable {
             font-weight: 600;
             color: #1C1C1E;
         }
-        img { display: none; }
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 0.8em 0;
+            display: block;
+        }
+        figure {
+            margin: 1.2em 0;
+            padding: 0;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #888;
+            margin-top: 6px;
+            text-align: center;
+        }
         </style>
         </head>
         <body>\(sanitized)</body>

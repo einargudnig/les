@@ -9,7 +9,7 @@ struct ReaderCacheEntry: Codable, FetchableRecord, PersistableRecord {
     var computedAt: TimeInterval
     var version: Int
 
-    static let currentVersion = 2
+    static let currentVersion = 3
 }
 
 struct ReaderCacheStore {
