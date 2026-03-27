@@ -3,7 +3,8 @@ import GRDB
 
 enum ItemFilter {
     case all
-    case unread
+    case unread      // Inbox
+    case readingList // bookmarkId IS NOT NULL
     case starred
     case today
     case lastSevenDays
@@ -58,6 +59,8 @@ struct ItemStore {
         case .all: break
         case .unread:
             conditions.append("readAt IS NULL")
+        case .readingList:
+            conditions.append("bookmarkId IS NOT NULL")
         case .starred:
             conditions.append("starredAt IS NOT NULL")
         case .today:
@@ -80,7 +83,7 @@ struct ItemStore {
             args.append(cursor)
         }
 
-        var sql = "SELECT id, title, author, publishedAt, readAt, starredAt FROM items"
+        var sql = "SELECT id, title, author, publishedAt, readAt, starredAt, bookmarkId FROM items"
         if !conditions.isEmpty {
             sql += " WHERE " + conditions.joined(separator: " AND ")
         }
@@ -160,6 +163,31 @@ struct ItemStore {
                 args.append(feedId)
             }
             return try Int.fetchOne(db, sql: sql, arguments: StatementArguments(args)) ?? 0
+        }
+    }
+
+    func inboxUnreadCount() throws -> Int {
+        try db.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM items WHERE readAt IS NULL") ?? 0
+        }
+    }
+
+    func readingListUnreadCount() throws -> Int {
+        try db.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM items WHERE bookmarkId IS NOT NULL AND readAt IS NULL") ?? 0
+        }
+    }
+
+    func starredCount() throws -> Int {
+        try db.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM items WHERE starredAt IS NOT NULL") ?? 0
+        }
+    }
+
+    func todayUnreadCount() throws -> Int {
+        try db.read { db in
+            let dayStart = Date().timeIntervalSince1970 - 86400
+            return try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM items WHERE readAt IS NULL AND publishedAt >= ?", arguments: [dayStart]) ?? 0
         }
     }
 }
