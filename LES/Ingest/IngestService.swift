@@ -50,6 +50,7 @@ struct IngestService {
                     let item = ItemRecord(
                         id: stableId,
                         feedId: feedId,
+                        bookmarkId: nil,
                         title: parsedItem.title,
                         author: parsedItem.author,
                         url: parsedItem.link,

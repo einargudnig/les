@@ -6,7 +6,8 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
     static let databaseTableName = "items"
 
     var id: String
-    var feedId: Int64
+    var feedId: Int64?
+    var bookmarkId: Int64?
     var title: String?
     var author: String?
     var url: String?
@@ -20,6 +21,7 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
 
     var isRead: Bool { readAt != nil }
     var isStarred: Bool { starredAt != nil }
+    var isBookmark: Bool { bookmarkId != nil }
 
     /// Lightweight view model for the items list
     struct RowViewModel {
@@ -29,6 +31,7 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
         let publishedAt: TimeInterval?
         let isRead: Bool
         let isStarred: Bool
+        let isBookmark: Bool
     }
 
     /// Full content for the reader pane
@@ -45,6 +48,13 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
 
 extension ItemRecord {
     static let feed = belongsTo(FeedRecord.self)
+
+    /// Compute a stable item ID for bookmarks
+    static func bookmarkStableID(url: String) -> String {
+        let input = "bookmark:\(url)"
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
 
     /// Compute a stable, deduplicated item ID
     static func stableID(feedId: Int64, externalId: String?, url: String?, title: String?, publishedAt: TimeInterval?) -> String {

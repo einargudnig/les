@@ -31,7 +31,8 @@ struct ItemStore {
                     author: row["author"],
                     publishedAt: row["publishedAt"],
                     isRead: row["readAt"] != nil,
-                    isStarred: row["starredAt"] != nil
+                    isStarred: row["starredAt"] != nil,
+                    isBookmark: (row["bookmarkId"] as Int64?) != nil
                 )
             }
         }

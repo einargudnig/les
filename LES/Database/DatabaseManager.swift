@@ -99,6 +99,53 @@ final class DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v2_bookmarks") { db in
+            try db.create(table: "bookmarks") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("url", .text).notNull().unique()
+                t.column("siteName", .text)
+                t.column("extractedAt", .double)
+                t.column("createdAt", .double).notNull()
+                t.column("updatedAt", .double).notNull()
+            }
+
+            // Recreate items table with nullable feedId and new bookmarkId column
+            try db.create(table: "items_new") { t in
+                t.primaryKey("id", .text)
+                t.column("feedId", .integer)
+                    .references("feeds", onDelete: .cascade)
+                t.column("bookmarkId", .integer)
+                    .references("bookmarks", onDelete: .cascade)
+                t.column("title", .text)
+                t.column("author", .text)
+                t.column("url", .text)
+                t.column("externalId", .text)
+                t.column("publishedAt", .double)
+                t.column("updatedAt", .double)
+                t.column("summaryHTML", .text)
+                t.column("contentHTML", .text)
+                t.column("readAt", .double)
+                t.column("starredAt", .double)
+            }
+
+            try db.execute(sql: """
+                INSERT INTO items_new (id, feedId, title, author, url, externalId,
+                    publishedAt, updatedAt, summaryHTML, contentHTML, readAt, starredAt)
+                SELECT id, feedId, title, author, url, externalId,
+                    publishedAt, updatedAt, summaryHTML, contentHTML, readAt, starredAt
+                FROM items
+            """)
+
+            try db.drop(table: "items")
+            try db.rename(table: "items_new", to: "items")
+
+            // Recreate indexes
+            try db.create(index: "idx_items_feed_published", on: "items", columns: ["feedId", "publishedAt"])
+            try db.create(index: "idx_items_readAt", on: "items", columns: ["readAt"])
+            try db.create(index: "idx_items_starredAt", on: "items", columns: ["starredAt"])
+            try db.create(index: "idx_items_bookmarkId", on: "items", columns: ["bookmarkId"])
+        }
+
         return migrator
     }
 }
