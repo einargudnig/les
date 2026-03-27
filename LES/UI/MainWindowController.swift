@@ -1,7 +1,7 @@
 import Cocoa
 
 class MainWindowController: NSWindowController {
-    var feedsVC: FeedsViewController!
+    var sidebarVC: SidebarViewController!
     var itemsVC: ItemsViewController!
     var readerVC: ReaderViewController!
 
@@ -24,13 +24,13 @@ class MainWindowController: NSWindowController {
     }
 
     private func setupSplitView() {
-        feedsVC = FeedsViewController()
+        sidebarVC = SidebarViewController()
         itemsVC = ItemsViewController()
         readerVC = ReaderViewController()
 
         let splitVC = NSSplitViewController()
 
-        let feedsItem = NSSplitViewItem(sidebarWithViewController: feedsVC)
+        let feedsItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
         feedsItem.minimumThickness = 180
         feedsItem.maximumThickness = 300
         feedsItem.canCollapse = true
@@ -49,8 +49,13 @@ class MainWindowController: NSWindowController {
 
         window?.contentViewController = splitVC
 
-        feedsVC.onFeedSelected = { [weak self] feedId in
-            self?.itemsVC.showItems(forFeedId: feedId)
+        sidebarVC.onSelectionChanged = { [weak self] selection in
+            switch selection {
+            case .smartView(let sv):
+                self?.itemsVC.showItems(forFilter: sv.filter)
+            case .feed(let feedId):
+                self?.itemsVC.showItems(forFeedId: feedId)
+            }
             self?.readerVC.clear()
         }
 
@@ -62,11 +67,11 @@ class MainWindowController: NSWindowController {
     // MARK: - Actions (responder chain)
 
     @objc func refreshCurrentFeed(_ sender: Any?) {
-        guard let feedId = feedsVC?.selectedFeedId else { return }
+        guard let feedId = sidebarVC?.selectedFeedId else { return }
         Task {
             await RefreshScheduler.shared.refreshFeed(id: feedId)
             await MainActor.run {
-                self.feedsVC?.reloadFeeds()
+                self.sidebarVC?.reloadData()
                 self.itemsVC?.reload()
             }
         }
@@ -76,7 +81,7 @@ class MainWindowController: NSWindowController {
         Task {
             await RefreshScheduler.shared.refreshAllFeeds()
             await MainActor.run {
-                self.feedsVC?.reloadFeeds()
+                self.sidebarVC?.reloadData()
                 self.itemsVC?.reload()
             }
         }
@@ -107,7 +112,41 @@ class MainWindowController: NSWindowController {
                         await RefreshScheduler.shared.refreshFeed(id: feedId)
                     }
                     await MainActor.run {
-                        self?.feedsVC?.reloadFeeds()
+                        self?.sidebarVC?.reloadData()
+                    }
+                } catch {
+                    await MainActor.run {
+                        let errAlert = NSAlert(error: error)
+                        errAlert.runModal()
+                    }
+                }
+            }
+        }
+    }
+
+    @objc func addBookmark(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Add Bookmark"
+        alert.informativeText = "Enter the URL to bookmark:"
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 400, height: 24))
+        input.placeholderString = "https://example.com/article"
+        alert.accessoryView = input
+
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            let urlString = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !urlString.isEmpty else { return }
+
+            Task {
+                do {
+                    try await BookmarkService().addBookmark(url: urlString, db: DatabaseManager.shared.dbPool)
+                    await MainActor.run {
+                        self?.sidebarVC?.reloadData()
+                        self?.itemsVC?.reload()
                     }
                 } catch {
                     await MainActor.run {
@@ -138,7 +177,7 @@ class MainWindowController: NSWindowController {
                     }
                     await RefreshScheduler.shared.refreshAllFeeds()
                     await MainActor.run {
-                        self?.feedsVC?.reloadFeeds()
+                        self?.sidebarVC?.reloadData()
                     }
                 } catch {
                     await MainActor.run {
@@ -153,7 +192,7 @@ class MainWindowController: NSWindowController {
     // MARK: - Focus management for vim nav
 
     func focusFeedsPane() {
-        window?.makeFirstResponder(feedsVC?.outlineView)
+        window?.makeFirstResponder(sidebarVC?.outlineView)
     }
 
     func focusItemsPane() {

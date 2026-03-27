@@ -101,6 +101,13 @@ class ItemsViewController: NSViewController {
 
     func showItems(forFeedId feedId: Int64?) {
         currentFeedId = feedId
+        currentFilter = .all
+        loadItems(append: false)
+    }
+
+    func showItems(forFilter filter: ItemFilter) {
+        currentFeedId = nil
+        currentFilter = filter
         loadItems(append: false)
     }
 
@@ -279,7 +286,8 @@ extension ItemsViewController: NSTableViewDelegate {
             date: item.publishedAt.map { formatDate($0) } ?? "",
             author: item.author,
             isRead: item.isRead,
-            isStarred: item.isStarred
+            isStarred: item.isStarred,
+            isBookmark: item.isBookmark
         )
 
         return cell
@@ -298,12 +306,13 @@ private class ItemCellView: NSTableCellView {
     private let authorField = NSTextField(labelWithString: "")
     private let unreadDot = NSView()
     private let starLabel = NSTextField(labelWithString: "")
+    private let bookmarkLabel = NSTextField(labelWithString: "")
 
     convenience init(identifier: NSUserInterfaceItemIdentifier) {
         self.init()
         self.identifier = identifier
 
-        for v in [titleField, dateField, authorField, unreadDot, starLabel] as [NSView] {
+        for v in [titleField, dateField, authorField, unreadDot, starLabel, bookmarkLabel] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -326,6 +335,9 @@ private class ItemCellView: NSTableCellView {
         starLabel.font = .systemFont(ofSize: 11)
         starLabel.textColor = NSColor(calibratedRed: 0.76, green: 0.60, blue: 0.32, alpha: 1.0)
 
+        bookmarkLabel.font = .systemFont(ofSize: 11)
+        bookmarkLabel.textColor = NSColor(calibratedRed: 0.545, green: 0.341, blue: 0.165, alpha: 1.0)
+
         NSLayoutConstraint.activate([
             // Unread dot — left edge
             unreadDot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
@@ -342,17 +354,20 @@ private class ItemCellView: NSTableCellView {
             dateField.firstBaselineAnchor.constraint(equalTo: titleField.firstBaselineAnchor),
             dateField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
 
-            // Star + author — bottom row
+            // Star + bookmark + author — bottom row
             starLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
             starLabel.leadingAnchor.constraint(equalTo: unreadDot.trailingAnchor, constant: 8),
 
+            bookmarkLabel.firstBaselineAnchor.constraint(equalTo: starLabel.firstBaselineAnchor),
+            bookmarkLabel.leadingAnchor.constraint(equalTo: starLabel.trailingAnchor, constant: 2),
+
             authorField.firstBaselineAnchor.constraint(equalTo: starLabel.firstBaselineAnchor),
-            authorField.leadingAnchor.constraint(equalTo: starLabel.trailingAnchor, constant: 2),
+            authorField.leadingAnchor.constraint(equalTo: bookmarkLabel.trailingAnchor, constant: 2),
             authorField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
         ])
     }
 
-    func configure(title: String, date: String, author: String?, isRead: Bool, isStarred: Bool) {
+    func configure(title: String, date: String, author: String?, isRead: Bool, isStarred: Bool, isBookmark: Bool) {
         // Title
         titleField.stringValue = title
         titleField.font = .systemFont(ofSize: 13, weight: isRead ? .regular : .medium)
@@ -375,5 +390,8 @@ private class ItemCellView: NSTableCellView {
 
         // Star
         starLabel.stringValue = isStarred ? "★" : ""
+
+        // Bookmark
+        bookmarkLabel.stringValue = isBookmark ? "↗" : ""
     }
 }

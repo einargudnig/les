@@ -53,6 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Add Feed…", action: #selector(MainWindowController.addFeed(_:)), keyEquivalent: "n")
+        fileMenu.addItem(withTitle: "Add Bookmark…", action: #selector(MainWindowController.addBookmark(_:)), keyEquivalent: "b")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Import OPML…", action: #selector(MainWindowController.importOPML(_:)), keyEquivalent: "i")
         fileMenu.addItem(withTitle: "Export OPML…", action: #selector(exportOPML(_:)), keyEquivalent: "e")
