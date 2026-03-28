@@ -5,17 +5,15 @@ class ReaderViewController: NSViewController {
     private(set) var textView: NSTextView!
     private var textScrollView: NSScrollView!
     private var webView: WKWebView?
+    private var emptyStateView: NSView!
     private var titleLabel: NSTextField!
     private var metaLabel: NSTextField!
     private var separatorView: NSView!
     private var containerView: NSView!
+    private var contentArea: NSView! // wraps both text and web views
 
-    private var emptyStateView: NSView!
     private var currentRenderTask: Task<Void, Never>?
     private let renderer = ReaderRenderer()
-
-    // Warm paper background
-    private let readerBackground = NSColor(calibratedRed: 0.988, green: 0.984, blue: 0.976, alpha: 1.0)
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -26,27 +24,30 @@ class ReaderViewController: NSViewController {
     override func loadView() {
         containerView = NSView()
         containerView.wantsLayer = true
-        containerView.layer?.backgroundColor = readerBackground.cgColor
 
         // Header area
         titleLabel = NSTextField(labelWithString: "")
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        titleLabel.font = Theme.readerTitleFont
         titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.maximumNumberOfLines = 4
-        titleLabel.textColor = NSColor(calibratedWhite: 0.11, alpha: 1.0)
+        titleLabel.textColor = Theme.primaryText
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         metaLabel = NSTextField(labelWithString: "")
         metaLabel.translatesAutoresizingMaskIntoConstraints = false
-        metaLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        metaLabel.textColor = NSColor(calibratedWhite: 0.45, alpha: 1.0)
+        metaLabel.font = Theme.readerMetaFont
+        metaLabel.textColor = Theme.secondaryText
         metaLabel.alphaValue = 0.85
 
         separatorView = NSView()
         separatorView.translatesAutoresizingMaskIntoConstraints = false
         separatorView.wantsLayer = true
-        separatorView.layer?.backgroundColor = NSColor(calibratedWhite: 0.0, alpha: 0.06).cgColor
+        separatorView.layer?.backgroundColor = Theme.separator.cgColor
+
+        // Content area (holds text scroll view, web view gets added here lazily)
+        contentArea = NSView()
+        contentArea.translatesAutoresizingMaskIntoConstraints = false
 
         // Text view for RSS content
         textScrollView = NSScrollView()
@@ -55,52 +56,60 @@ class ReaderViewController: NSViewController {
         textScrollView.autohidesScrollers = true
         textScrollView.scrollerStyle = .overlay
         textScrollView.drawsBackground = true
-        textScrollView.backgroundColor = readerBackground
+        textScrollView.backgroundColor = Theme.readerBackground
 
         textView = NSTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
         textView.drawsBackground = true
-        textView.backgroundColor = readerBackground
-        textView.textContainerInset = NSSize(width: 32, height: 24)
+        textView.backgroundColor = Theme.readerBackground
+        textView.textContainerInset = NSSize(width: Theme.spacingXXL, height: Theme.spacingXL)
         textView.isAutomaticLinkDetectionEnabled = true
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
         textScrollView.documentView = textView
+        contentArea.addSubview(textScrollView)
+
+        NSLayoutConstraint.activate([
+            textScrollView.topAnchor.constraint(equalTo: contentArea.topAnchor),
+            textScrollView.bottomAnchor.constraint(equalTo: contentArea.bottomAnchor),
+            textScrollView.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
+            textScrollView.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
+        ])
 
         containerView.addSubview(titleLabel)
         containerView.addSubview(metaLabel)
         containerView.addSubview(separatorView)
-        containerView.addSubview(textScrollView)
+        containerView.addSubview(contentArea)
 
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 28),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
-            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
+            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Theme.spacingXXL - 4),
+            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Theme.spacingXXL),
+            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Theme.spacingXXL),
 
-            metaLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            metaLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
-            metaLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
+            metaLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Theme.spacingSM),
+            metaLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Theme.spacingXXL),
+            metaLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Theme.spacingXXL),
 
-            separatorView.topAnchor.constraint(equalTo: metaLabel.bottomAnchor, constant: 20),
-            separatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
-            separatorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
+            separatorView.topAnchor.constraint(equalTo: metaLabel.bottomAnchor, constant: Theme.spacingLG + 4),
+            separatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Theme.spacingXXL),
+            separatorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Theme.spacingXXL),
             separatorView.heightAnchor.constraint(equalToConstant: 1),
 
-            textScrollView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
-            textScrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            textScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            textScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            contentArea.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: Theme.spacingXS),
+            contentArea.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            contentArea.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            contentArea.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
         ])
 
-        // Empty state — centered icon + hint
+        // Empty state
         emptyStateView = NSView()
         emptyStateView.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.wantsLayer = true
-        emptyStateView.layer?.backgroundColor = NSColor(calibratedRed: 0.85, green: 0.83, blue: 0.80, alpha: 1.0).cgColor
+        emptyStateView.layer?.backgroundColor = Theme.emptyStateBackground.cgColor
         containerView.addSubview(emptyStateView)
 
         let iconView = NSImageView()
@@ -110,20 +119,21 @@ class ReaderViewController: NSViewController {
            let icon = NSImage(contentsOf: iconURL) {
             iconView.image = icon
         }
-        iconView.alphaValue = 0.15
+        iconView.alphaValue = 0.12
         emptyStateView.addSubview(iconView)
 
         let hintLabel = NSTextField(labelWithString: "Select an item to read")
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
-        hintLabel.font = .systemFont(ofSize: 13, weight: .regular)
-        hintLabel.textColor = NSColor(calibratedWhite: 0.0, alpha: 0.2)
+        hintLabel.font = .systemFont(ofSize: 14, weight: .regular)
+        hintLabel.textColor = Theme.tertiaryText
         hintLabel.alignment = .center
         emptyStateView.addSubview(hintLabel)
 
         let shortcutLabel = NSTextField(labelWithString: "j/k to navigate  ·  ? for shortcuts")
         shortcutLabel.translatesAutoresizingMaskIntoConstraints = false
         shortcutLabel.font = .systemFont(ofSize: 11, weight: .regular)
-        shortcutLabel.textColor = NSColor(calibratedWhite: 0.0, alpha: 0.13)
+        shortcutLabel.textColor = Theme.tertiaryText
+        shortcutLabel.alphaValue = 0.6
         shortcutLabel.alignment = .center
         emptyStateView.addSubview(shortcutLabel)
 
@@ -135,13 +145,13 @@ class ReaderViewController: NSViewController {
 
             iconView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
             iconView.centerYAnchor.constraint(equalTo: emptyStateView.centerYAnchor, constant: -30),
-            iconView.widthAnchor.constraint(equalToConstant: 80),
-            iconView.heightAnchor.constraint(equalToConstant: 80),
+            iconView.widthAnchor.constraint(equalToConstant: 72),
+            iconView.heightAnchor.constraint(equalToConstant: 72),
 
-            hintLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
+            hintLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: Theme.spacingLG),
             hintLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
 
-            shortcutLabel.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 6),
+            shortcutLabel.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: Theme.spacingXS + 2),
             shortcutLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
         ])
 
@@ -150,15 +160,27 @@ class ReaderViewController: NSViewController {
 
     func showItem(itemId: String) {
         currentRenderTask?.cancel()
-        emptyStateView.isHidden = true
-        titleLabel.isHidden = false
-        metaLabel.isHidden = false
 
         let store = ItemStore(db: DatabaseManager.shared.dbPool)
         guard let content = try? store.loadItemContent(id: itemId) else {
             clear()
             return
         }
+
+        // Fade out empty state, show content
+        if !emptyStateView.isHidden {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.15
+                emptyStateView.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                self?.emptyStateView.isHidden = true
+                self?.emptyStateView.alphaValue = 1
+            })
+        }
+
+        titleLabel.isHidden = false
+        metaLabel.isHidden = false
+        separatorView.isHidden = false
 
         titleLabel.stringValue = content.title ?? "Untitled"
 
@@ -173,15 +195,12 @@ class ReaderViewController: NSViewController {
             meta.append(host)
         }
         metaLabel.stringValue = meta.joined(separator: "  ·  ")
-        separatorView.isHidden = false
 
         if let urlStr = content.url, let url = URL(string: urlStr),
            (content.isBookmark || isThinContent(content)) {
-            // Bookmark or thin RSS content: load the full page in WKWebView
             showWebView()
             ensureWebView().load(URLRequest(url: url))
         } else {
-            // RSS with real content: render with text renderer
             showTextView()
             renderText(content: content, itemId: itemId)
         }
@@ -197,6 +216,7 @@ class ReaderViewController: NSViewController {
         textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
         webView?.loadHTMLString("", baseURL: nil)
         emptyStateView.isHidden = false
+        emptyStateView.alphaValue = 1
     }
 
     // MARK: - Lazy WKWebView
@@ -207,12 +227,12 @@ class ReaderViewController: NSViewController {
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.translatesAutoresizingMaskIntoConstraints = false
         wv.isHidden = true
-        containerView.addSubview(wv)
+        contentArea.addSubview(wv)
         NSLayoutConstraint.activate([
-            wv.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
-            wv.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            wv.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            wv.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            wv.topAnchor.constraint(equalTo: contentArea.topAnchor),
+            wv.bottomAnchor.constraint(equalTo: contentArea.bottomAnchor),
+            wv.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
         ])
         webView = wv
         return wv
@@ -236,7 +256,6 @@ class ReaderViewController: NSViewController {
         currentRenderTask = Task { [weak self] in
             guard let self else { return }
 
-            // Check cache
             let cacheStore = ReaderCacheStore(db: DatabaseManager.shared.dbPool)
             if let cached = try? cacheStore.cached(itemId: itemId),
                let data = cached.renderedData,
@@ -267,19 +286,12 @@ class ReaderViewController: NSViewController {
 
     // MARK: - Content detection
 
-    /// Returns true if the item has little useful text content (e.g. HN link posts)
     private func isThinContent(_ content: ItemRecord.Content) -> Bool {
         let html = content.contentHTML ?? content.summaryHTML ?? ""
         if html.isEmpty { return true }
-
-        // Strip tags and measure actual text
         let plain = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // If the plain text is very short, it's thin
-        if plain.count < 200 { return true }
-
-        return false
+        return plain.count < 200
     }
 
     // MARK: - Vim scroll

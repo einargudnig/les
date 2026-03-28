@@ -69,7 +69,7 @@ class SidebarViewController: NSViewController {
     private(set) var outlineView: NSOutlineView!
     private var scrollView: NSScrollView!
 
-    private let accentColor = NSColor(calibratedRed: 0.545, green: 0.341, blue: 0.165, alpha: 1.0)
+    private let accentColor = Theme.accent
 
     // Data
     private var smartViewItems: [SmartViewItem] = SmartView.allCases.map { SmartViewItem($0) }

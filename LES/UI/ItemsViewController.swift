@@ -54,7 +54,7 @@ class ItemsViewController: NSViewController {
         scrollView.drawsBackground = false
 
         tableView = NSTableView()
-        tableView.rowHeight = 56
+        tableView.rowHeight = Theme.itemRowHeight
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.style = .plain
         tableView.selectionHighlightStyle = .regular
@@ -337,13 +337,13 @@ private class ItemCellView: NSTableCellView {
 
         unreadDot.wantsLayer = true
         unreadDot.layer?.cornerRadius = 3
-        unreadDot.layer?.backgroundColor = NSColor(calibratedRed: 0.545, green: 0.341, blue: 0.165, alpha: 1.0).cgColor
+        unreadDot.layer?.backgroundColor = Theme.accent.cgColor
 
         starLabel.font = .systemFont(ofSize: 11)
-        starLabel.textColor = NSColor(calibratedRed: 0.76, green: 0.60, blue: 0.32, alpha: 1.0)
+        starLabel.textColor = Theme.accent
 
         bookmarkLabel.font = .systemFont(ofSize: 11)
-        bookmarkLabel.textColor = NSColor(calibratedRed: 0.545, green: 0.341, blue: 0.165, alpha: 1.0)
+        bookmarkLabel.textColor = Theme.accentSubtle
 
         NSLayoutConstraint.activate([
             // Unread dot — left edge
@@ -375,30 +375,20 @@ private class ItemCellView: NSTableCellView {
     }
 
     func configure(title: String, date: String, subtitle: String?, isRead: Bool, isStarred: Bool, isBookmark: Bool) {
-        // Title
         titleField.stringValue = title
-        titleField.font = .systemFont(ofSize: 13, weight: isRead ? .regular : .medium)
-        titleField.textColor = isRead
-            ? .secondaryLabelColor
-            : .labelColor
+        titleField.font = isRead ? Theme.itemTitleFont : Theme.itemTitleFontBold
+        titleField.textColor = isRead ? .secondaryLabelColor : .labelColor
 
-        // Date
         dateField.stringValue = date
-        dateField.font = .systemFont(ofSize: 11, weight: .regular)
-        dateField.textColor = NSColor(calibratedWhite: 0.55, alpha: 1.0)
+        dateField.font = Theme.itemDetailFont
+        dateField.textColor = Theme.tertiaryText
 
-        // Subtitle (author for RSS, domain for bookmarks)
         authorField.stringValue = subtitle ?? ""
-        authorField.font = .systemFont(ofSize: 11, weight: .regular)
-        authorField.textColor = NSColor(calibratedWhite: 0.55, alpha: 1.0)
+        authorField.font = Theme.itemDetailFont
+        authorField.textColor = Theme.tertiaryText
 
-        // Unread dot
         unreadDot.isHidden = isRead
-
-        // Star
         starLabel.stringValue = isStarred ? "★" : ""
-
-        // Bookmark indicator
         bookmarkLabel.stringValue = isBookmark ? "↗" : ""
     }
 }
