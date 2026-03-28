@@ -10,6 +10,7 @@ class ReaderViewController: NSViewController {
     private var separatorView: NSView!
     private var containerView: NSView!
 
+    private var emptyStateView: NSView!
     private var currentRenderTask: Task<Void, Never>?
     private let renderer = ReaderRenderer()
 
@@ -95,11 +96,63 @@ class ReaderViewController: NSViewController {
             textScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
         ])
 
+        // Empty state — centered icon + hint
+        emptyStateView = NSView()
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.wantsLayer = true
+        emptyStateView.layer?.backgroundColor = NSColor(calibratedRed: 0.85, green: 0.83, blue: 0.80, alpha: 1.0).cgColor
+        containerView.addSubview(emptyStateView)
+
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.imageScaling = .scaleProportionallyDown
+        if let iconURL = Bundle.module.url(forResource: "les", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            iconView.image = icon
+        }
+        iconView.alphaValue = 0.15
+        emptyStateView.addSubview(iconView)
+
+        let hintLabel = NSTextField(labelWithString: "Select an item to read")
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        hintLabel.textColor = NSColor(calibratedWhite: 0.0, alpha: 0.2)
+        hintLabel.alignment = .center
+        emptyStateView.addSubview(hintLabel)
+
+        let shortcutLabel = NSTextField(labelWithString: "j/k to navigate  ·  ? for shortcuts")
+        shortcutLabel.translatesAutoresizingMaskIntoConstraints = false
+        shortcutLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        shortcutLabel.textColor = NSColor(calibratedWhite: 0.0, alpha: 0.13)
+        shortcutLabel.alignment = .center
+        emptyStateView.addSubview(shortcutLabel)
+
+        NSLayoutConstraint.activate([
+            emptyStateView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            emptyStateView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+
+            iconView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: emptyStateView.centerYAnchor, constant: -30),
+            iconView.widthAnchor.constraint(equalToConstant: 80),
+            iconView.heightAnchor.constraint(equalToConstant: 80),
+
+            hintLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
+            hintLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+
+            shortcutLabel.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 6),
+            shortcutLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+        ])
+
         self.view = containerView
     }
 
     func showItem(itemId: String) {
         currentRenderTask?.cancel()
+        emptyStateView.isHidden = true
+        titleLabel.isHidden = false
+        metaLabel.isHidden = false
 
         let store = ItemStore(db: DatabaseManager.shared.dbPool)
         guard let content = try? store.loadItemContent(id: itemId) else {
@@ -122,12 +175,13 @@ class ReaderViewController: NSViewController {
         metaLabel.stringValue = meta.joined(separator: "  ·  ")
         separatorView.isHidden = false
 
-        if content.isBookmark, let urlStr = content.url, let url = URL(string: urlStr) {
-            // Bookmark: load the full page in WKWebView
+        if let urlStr = content.url, let url = URL(string: urlStr),
+           (content.isBookmark || isThinContent(content)) {
+            // Bookmark or thin RSS content: load the full page in WKWebView
             showWebView()
             ensureWebView().load(URLRequest(url: url))
         } else {
-            // RSS: render with text renderer
+            // RSS with real content: render with text renderer
             showTextView()
             renderText(content: content, itemId: itemId)
         }
@@ -135,12 +189,14 @@ class ReaderViewController: NSViewController {
 
     func clear() {
         currentRenderTask?.cancel()
-        titleLabel.stringValue = ""
-        metaLabel.stringValue = ""
+        titleLabel.isHidden = true
+        metaLabel.isHidden = true
         separatorView.isHidden = true
+        textScrollView.isHidden = true
+        webView?.isHidden = true
         textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
         webView?.loadHTMLString("", baseURL: nil)
-        showTextView()
+        emptyStateView.isHidden = false
     }
 
     // MARK: - Lazy WKWebView
@@ -207,6 +263,23 @@ class ReaderViewController: NSViewController {
                 self.textView.scrollToBeginningOfDocument(nil)
             }
         }
+    }
+
+    // MARK: - Content detection
+
+    /// Returns true if the item has little useful text content (e.g. HN link posts)
+    private func isThinContent(_ content: ItemRecord.Content) -> Bool {
+        let html = content.contentHTML ?? content.summaryHTML ?? ""
+        if html.isEmpty { return true }
+
+        // Strip tags and measure actual text
+        let plain = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If the plain text is very short, it's thin
+        if plain.count < 200 { return true }
+
+        return false
     }
 
     // MARK: - Vim scroll

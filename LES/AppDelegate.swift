@@ -34,6 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindowController = MainWindowController()
         mainWindowController.showWindow(nil)
         mainWindowController.window?.makeKeyAndOrderFront(nil)
+        mainWindowController.window?.setFrame(NSScreen.main!.visibleFrame, display: true)
         NSApp.activate(ignoringOtherApps: true)
 
         Task {
