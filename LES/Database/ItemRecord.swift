@@ -28,6 +28,7 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
         let id: String
         let title: String
         let author: String?
+        let url: String?
         let publishedAt: TimeInterval?
         let isRead: Bool
         let isStarred: Bool
@@ -43,6 +44,7 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
         let publishedAt: TimeInterval?
         let summaryHTML: String?
         let contentHTML: String?
+        let isBookmark: Bool
     }
 }
 

@@ -13,12 +13,12 @@ enum SmartView: String, CaseIterable {
     case starred = "Starred"
     case today = "Today"
 
-    var icon: String {
+    var symbolName: String {
         switch self {
-        case .inbox: return "\u{1F4E5}"       // 📥
-        case .readingList: return "\u{1F4D6}"  // 📖
-        case .starred: return "\u{2B50}"       // ⭐
-        case .today: return "\u{2600}\u{FE0F}" // ☀️
+        case .inbox: return "tray"
+        case .readingList: return "book"
+        case .starred: return "star"
+        case .today: return "calendar"
         }
     }
 
@@ -306,7 +306,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
             let cellID = NSUserInterfaceItemIdentifier("SmartViewCell")
             let cell = outlineView.makeView(withIdentifier: cellID, owner: self) as? SmartViewCellView
                 ?? SmartViewCellView(identifier: cellID, accentColor: accentColor)
-            cell.configure(icon: svItem.smartView.icon, title: svItem.smartView.rawValue, count: svItem.count)
+            cell.configure(symbolName: svItem.smartView.symbolName, title: svItem.smartView.rawValue, count: svItem.count)
             return cell
         }
 
@@ -373,7 +373,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
 // MARK: - SmartViewCellView
 
 private class SmartViewCellView: NSTableCellView {
-    private let iconField = NSTextField(labelWithString: "")
+    private let iconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
     private let countBadge = NSTextField(labelWithString: "")
 
@@ -381,8 +381,10 @@ private class SmartViewCellView: NSTableCellView {
         self.init()
         self.identifier = identifier
 
-        iconField.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(iconField)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.contentTintColor = .secondaryLabelColor
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        addSubview(iconView)
 
         titleField.translatesAutoresizingMaskIntoConstraints = false
         titleField.lineBreakMode = .byTruncatingTail
@@ -398,13 +400,15 @@ private class SmartViewCellView: NSTableCellView {
         addSubview(countBadge)
 
         self.textField = titleField
+        self.imageView = iconView
 
         NSLayoutConstraint.activate([
-            iconField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            iconField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconField.widthAnchor.constraint(equalToConstant: 20),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 18),
+            iconView.heightAnchor.constraint(equalToConstant: 18),
 
-            titleField.leadingAnchor.constraint(equalTo: iconField.trailingAnchor, constant: 4),
+            titleField.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
             titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleField.trailingAnchor.constraint(lessThanOrEqualTo: countBadge.leadingAnchor, constant: -6),
 
@@ -413,9 +417,8 @@ private class SmartViewCellView: NSTableCellView {
         ])
     }
 
-    func configure(icon: String, title: String, count: Int) {
-        iconField.stringValue = icon
-        iconField.font = .systemFont(ofSize: 13)
+    func configure(symbolName: String, title: String, count: Int) {
+        iconView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: title)
         titleField.stringValue = title
         titleField.font = .systemFont(ofSize: 13, weight: count > 0 ? .medium : .regular)
         titleField.textColor = .labelColor

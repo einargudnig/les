@@ -12,7 +12,7 @@ class MainWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "LES"
+        window.title = "les"
         window.minSize = NSSize(width: 800, height: 400)
         window.setFrameAutosaveName("MainWindow")
         window.titlebarAppearsTransparent = false

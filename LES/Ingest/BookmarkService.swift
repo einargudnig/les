@@ -6,43 +6,31 @@ actor BookmarkService {
     private let extractor = ReadabilityExtractor()
 
     func addBookmark(url: String, db: DatabasePool) async throws {
-        let bookmarkStore = BookmarkStore(db: db)
+        // Check if item already exists for this URL
+        let stableId = ItemRecord.bookmarkStableID(url: url)
+        let existingItem = try await db.read { db in
+            try ItemRecord.fetchOne(db, key: stableId)
+        }
+        if existingItem != nil { return }
 
-        // Check for duplicate
-        if try bookmarkStore.bookmarkByURL(url) != nil {
-            return // already bookmarked
+        // Reuse existing bookmark record or create new one
+        let bookmarkId: Int64 = try await db.write { db in
+            if let existing = try BookmarkRecord.filter(Column("url") == url).fetchOne(db) {
+                return existing.id!
+            } else {
+                let now = Date().timeIntervalSince1970
+                var bookmark = BookmarkRecord(url: url, createdAt: now, updatedAt: now)
+                try bookmark.insert(db)
+                return db.lastInsertedRowID
+            }
         }
 
-        // Insert bookmark record immediately
-        let bookmark = try bookmarkStore.insertBookmark(url: url)
-        guard let bookmarkId = bookmark.id else { return }
-
         // Fetch and extract
+        let extracted: ExtractedArticle
         do {
-            let extracted = try await fetchAndExtract(urlString: url)
-
-            // Create item
-            let stableId = ItemRecord.bookmarkStableID(url: url)
-            let item = ItemRecord(
-                id: stableId,
-                feedId: nil,
-                bookmarkId: bookmarkId,
-                title: extracted.title ?? url,
-                author: extracted.author,
-                url: url,
-                publishedAt: extracted.publishedAt ?? Date().timeIntervalSince1970,
-                updatedAt: Date().timeIntervalSince1970,
-                contentHTML: extracted.contentHTML
-            )
-
-            try await db.write { db in
-                try item.insert(db)
-            }
-
-            try bookmarkStore.updateExtraction(id: bookmarkId, siteName: extracted.siteName)
+            extracted = try await fetchAndExtract(urlString: url)
         } catch {
-            // Extraction failed — create item with error message
-            let stableId = ItemRecord.bookmarkStableID(url: url)
+            // Extraction failed — create fallback item
             let errorHTML = """
                 <p>Could not extract article content.</p>
                 <p><a href="\(url)">Open in browser</a></p>
@@ -57,10 +45,43 @@ actor BookmarkService {
                 updatedAt: Date().timeIntervalSince1970,
                 contentHTML: errorHTML
             )
-            try? await db.write { db in
-                try item.insert(db)
-            }
+            try? await db.write { db in try item.insert(db) }
+            return
         }
+
+        // Create item from extraction
+        let item = ItemRecord(
+            id: stableId,
+            feedId: nil,
+            bookmarkId: bookmarkId,
+            title: extracted.title ?? url,
+            author: extracted.author,
+            url: url,
+            publishedAt: extracted.publishedAt ?? Date().timeIntervalSince1970,
+            updatedAt: Date().timeIntervalSince1970,
+            contentHTML: extracted.contentHTML ?? Self.fallbackHTML(url: url)
+        )
+
+        try await db.write { db in try item.insert(db) }
+
+        try await db.write { db in
+            try db.execute(
+                sql: "UPDATE bookmarks SET extractedAt = ?, siteName = ?, updatedAt = ? WHERE id = ?",
+                arguments: [Date().timeIntervalSince1970, extracted.siteName, Date().timeIntervalSince1970, bookmarkId]
+            )
+        }
+    }
+
+    private static func fallbackHTML(url: String) -> String {
+        let domain = URL(string: url)?.host ?? url
+        return """
+        <p style="margin-top: 1em;">Saved from <strong>\(domain)</strong></p>
+        <p><a href="\(url)">\(url)</a></p>
+        <p style="color: #888; margin-top: 2em; font-size: 14px;">
+            Content could not be extracted from this page.
+            Click the link above to read it in your browser.
+        </p>
+        """
     }
 
     private func fetchAndExtract(urlString: String) async throws -> ExtractedArticle {

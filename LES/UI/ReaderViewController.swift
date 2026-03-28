@@ -1,9 +1,10 @@
 import Cocoa
+import WebKit
 
 class ReaderViewController: NSViewController {
     private(set) var textView: NSTextView!
-    private var scrollView: NSScrollView!
-    private var headerStack: NSStackView!
+    private var textScrollView: NSScrollView!
+    private var webView: WKWebView!
     private var titleLabel: NSTextField!
     private var metaLabel: NSTextField!
     private var separatorView: NSView!
@@ -14,7 +15,6 @@ class ReaderViewController: NSViewController {
 
     // Warm paper background
     private let readerBackground = NSColor(calibratedRed: 0.988, green: 0.984, blue: 0.976, alpha: 1.0)
-    private let accentColor = NSColor(calibratedRed: 0.545, green: 0.341, blue: 0.165, alpha: 1.0) // warm brown
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -47,14 +47,14 @@ class ReaderViewController: NSViewController {
         separatorView.wantsLayer = true
         separatorView.layer?.backgroundColor = NSColor(calibratedWhite: 0.0, alpha: 0.06).cgColor
 
-        // Text view for content
-        scrollView = NSScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = readerBackground
+        // Text view for RSS content
+        textScrollView = NSScrollView()
+        textScrollView.translatesAutoresizingMaskIntoConstraints = false
+        textScrollView.hasVerticalScroller = true
+        textScrollView.autohidesScrollers = true
+        textScrollView.scrollerStyle = .overlay
+        textScrollView.drawsBackground = true
+        textScrollView.backgroundColor = readerBackground
 
         textView = NSTextView()
         textView.isEditable = false
@@ -68,12 +68,19 @@ class ReaderViewController: NSViewController {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
-        scrollView.documentView = textView
+        textScrollView.documentView = textView
+
+        // Web view for bookmarks
+        let config = WKWebViewConfiguration()
+        webView = WKWebView(frame: .zero, configuration: config)
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.isHidden = true
 
         containerView.addSubview(titleLabel)
         containerView.addSubview(metaLabel)
         containerView.addSubview(separatorView)
-        containerView.addSubview(scrollView)
+        containerView.addSubview(textScrollView)
+        containerView.addSubview(webView)
 
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 28),
@@ -89,20 +96,25 @@ class ReaderViewController: NSViewController {
             separatorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
             separatorView.heightAnchor.constraint(equalToConstant: 1),
 
-            scrollView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
-            scrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            // Text scroll view fills below separator
+            textScrollView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
+            textScrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            textScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            textScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+
+            // Web view fills below separator (same position, toggled via isHidden)
+            webView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
+            webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
         ])
 
         self.view = containerView
     }
 
     func showItem(itemId: String) {
-        // Cancel previous render
         currentRenderTask?.cancel()
 
-        // Show title/meta immediately
         let store = ItemStore(db: DatabaseManager.shared.dbPool)
         guard let content = try? store.loadItemContent(id: itemId) else {
             clear()
@@ -118,15 +130,52 @@ class ReaderViewController: NSViewController {
         if let ts = content.publishedAt {
             meta.append(dateFormatter.string(from: Date(timeIntervalSince1970: ts)))
         }
+        if content.isBookmark, let urlStr = content.url, let host = URL(string: urlStr)?.host {
+            meta.append(host)
+        }
         metaLabel.stringValue = meta.joined(separator: "  ·  ")
-
         separatorView.isHidden = false
 
-        // Async render content
+        if content.isBookmark, let urlStr = content.url, let url = URL(string: urlStr) {
+            // Bookmark: load the full page in WKWebView
+            showWebView()
+            webView.load(URLRequest(url: url))
+        } else {
+            // RSS: render with text renderer
+            showTextView()
+            renderText(content: content, itemId: itemId)
+        }
+    }
+
+    func clear() {
+        currentRenderTask?.cancel()
+        titleLabel.stringValue = ""
+        metaLabel.stringValue = ""
+        separatorView.isHidden = true
+        textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
+        webView.loadHTMLString("", baseURL: nil)
+        showTextView()
+    }
+
+    // MARK: - View switching
+
+    private func showWebView() {
+        textScrollView.isHidden = true
+        webView.isHidden = false
+    }
+
+    private func showTextView() {
+        webView.isHidden = true
+        textScrollView.isHidden = false
+    }
+
+    // MARK: - Text rendering (RSS)
+
+    private func renderText(content: ItemRecord.Content, itemId: String) {
         currentRenderTask = Task { [weak self] in
             guard let self else { return }
 
-            // Check cache first
+            // Check cache
             let cacheStore = ReaderCacheStore(db: DatabaseManager.shared.dbPool)
             if let cached = try? cacheStore.cached(itemId: itemId),
                let data = cached.renderedData,
@@ -139,13 +188,11 @@ class ReaderViewController: NSViewController {
                 return
             }
 
-            // Render from HTML
             let html = content.contentHTML ?? content.summaryHTML ?? ""
             let attrStr = await renderer.render(html: html)
 
             guard !Task.isCancelled else { return }
 
-            // Cache it
             if let data = try? NSKeyedArchiver.archivedData(withRootObject: attrStr, requiringSecureCoding: false) {
                 try? cacheStore.store(itemId: itemId, renderedData: data)
             }
@@ -157,30 +204,30 @@ class ReaderViewController: NSViewController {
         }
     }
 
-    func clear() {
-        currentRenderTask?.cancel()
-        titleLabel.stringValue = ""
-        metaLabel.stringValue = ""
-        separatorView.isHidden = true
-        textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
-    }
-
     // MARK: - Vim scroll
 
     private let scrollStep: CGFloat = 60
 
     func scrollDown() {
-        let clipView = scrollView.contentView
-        var origin = clipView.bounds.origin
-        let maxY = (scrollView.documentView?.frame.height ?? 0) - clipView.bounds.height
-        origin.y = min(origin.y + scrollStep, max(maxY, 0))
-        clipView.animator().setBoundsOrigin(origin)
+        if !webView.isHidden {
+            webView.evaluateJavaScript("window.scrollBy(0, 60)")
+        } else {
+            let clipView = textScrollView.contentView
+            var origin = clipView.bounds.origin
+            let maxY = (textScrollView.documentView?.frame.height ?? 0) - clipView.bounds.height
+            origin.y = min(origin.y + scrollStep, max(maxY, 0))
+            clipView.animator().setBoundsOrigin(origin)
+        }
     }
 
     func scrollUp() {
-        let clipView = scrollView.contentView
-        var origin = clipView.bounds.origin
-        origin.y = max(origin.y - scrollStep, 0)
-        clipView.animator().setBoundsOrigin(origin)
+        if !webView.isHidden {
+            webView.evaluateJavaScript("window.scrollBy(0, -60)")
+        } else {
+            let clipView = textScrollView.contentView
+            var origin = clipView.bounds.origin
+            origin.y = max(origin.y - scrollStep, 0)
+            clipView.animator().setBoundsOrigin(origin)
+        }
     }
 }

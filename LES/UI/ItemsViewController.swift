@@ -281,10 +281,17 @@ extension ItemsViewController: NSTableViewDelegate {
         let cell = tableView.makeView(withIdentifier: cellID, owner: self) as? ItemCellView
             ?? ItemCellView(identifier: cellID)
 
+        let subtitle: String?
+        if item.isBookmark {
+            subtitle = item.url.flatMap { URL(string: $0)?.host }
+        } else {
+            subtitle = item.author
+        }
+
         cell.configure(
             title: item.title,
             date: item.publishedAt.map { formatDate($0) } ?? "",
-            author: item.author,
+            subtitle: subtitle,
             isRead: item.isRead,
             isStarred: item.isStarred,
             isBookmark: item.isBookmark
@@ -367,7 +374,7 @@ private class ItemCellView: NSTableCellView {
         ])
     }
 
-    func configure(title: String, date: String, author: String?, isRead: Bool, isStarred: Bool, isBookmark: Bool) {
+    func configure(title: String, date: String, subtitle: String?, isRead: Bool, isStarred: Bool, isBookmark: Bool) {
         // Title
         titleField.stringValue = title
         titleField.font = .systemFont(ofSize: 13, weight: isRead ? .regular : .medium)
@@ -380,8 +387,8 @@ private class ItemCellView: NSTableCellView {
         dateField.font = .systemFont(ofSize: 11, weight: .regular)
         dateField.textColor = NSColor(calibratedWhite: 0.55, alpha: 1.0)
 
-        // Author
-        authorField.stringValue = author ?? ""
+        // Subtitle (author for RSS, domain for bookmarks)
+        authorField.stringValue = subtitle ?? ""
         authorField.font = .systemFont(ofSize: 11, weight: .regular)
         authorField.textColor = NSColor(calibratedWhite: 0.55, alpha: 1.0)
 
@@ -391,7 +398,7 @@ private class ItemCellView: NSTableCellView {
         // Star
         starLabel.stringValue = isStarred ? "★" : ""
 
-        // Bookmark
+        // Bookmark indicator
         bookmarkLabel.stringValue = isBookmark ? "↗" : ""
     }
 }

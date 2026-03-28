@@ -30,6 +30,7 @@ struct ItemStore {
                     id: row["id"],
                     title: row["title"] ?? "Untitled",
                     author: row["author"],
+                    url: row["url"],
                     publishedAt: row["publishedAt"],
                     isRead: row["readAt"] != nil,
                     isStarred: row["starredAt"] != nil,
@@ -83,7 +84,7 @@ struct ItemStore {
             args.append(cursor)
         }
 
-        var sql = "SELECT id, title, author, publishedAt, readAt, starredAt, bookmarkId FROM items"
+        var sql = "SELECT id, title, author, url, publishedAt, readAt, starredAt, bookmarkId FROM items"
         if !conditions.isEmpty {
             sql += " WHERE " + conditions.joined(separator: " AND ")
         }
@@ -103,7 +104,8 @@ struct ItemStore {
                 url: item.url,
                 publishedAt: item.publishedAt,
                 summaryHTML: item.summaryHTML,
-                contentHTML: item.contentHTML
+                contentHTML: item.contentHTML,
+                isBookmark: item.isBookmark
             )
         }
     }
