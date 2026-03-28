@@ -100,6 +100,9 @@ final class DatabaseManager {
         }
 
         migrator.registerMigration("v2_bookmarks") { db in
+            // Clear reader cache before recreating items table (foreign key constraint)
+            try db.execute(sql: "DELETE FROM readerCache")
+
             try db.create(table: "bookmarks") { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("url", .text).notNull().unique()
