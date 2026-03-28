@@ -62,7 +62,16 @@ actor BookmarkService {
             contentHTML: extracted.contentHTML ?? Self.fallbackHTML(url: url)
         )
 
-        try await db.write { db in try item.insert(db) }
+        try await db.write { db in
+            try item.insert(db)
+
+            // Index in FTS
+            let plain = DatabaseManager.stripHTMLTags(extracted.contentHTML ?? "")
+            try db.execute(
+                sql: "INSERT INTO items_fts(rowid, title, author, contentText) VALUES ((SELECT rowid FROM items WHERE id = ?), ?, ?, ?)",
+                arguments: [stableId, item.title ?? "", item.author ?? "", plain]
+            )
+        }
 
         try await db.write { db in
             try db.execute(

@@ -61,6 +61,13 @@ struct IngestService {
                         contentHTML: parsedItem.contentHTML
                     )
                     try item.insert(db)
+
+                    // Index in FTS
+                    let plain = DatabaseManager.stripHTMLTags(parsedItem.contentHTML ?? parsedItem.summaryHTML ?? "")
+                    try db.execute(
+                        sql: "INSERT INTO items_fts(rowid, title, author, contentText) VALUES ((SELECT rowid FROM items WHERE id = ?), ?, ?, ?)",
+                        arguments: [stableId, parsedItem.title ?? "", parsedItem.author ?? "", plain]
+                    )
                 }
             }
 

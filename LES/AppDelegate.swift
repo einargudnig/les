@@ -16,6 +16,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Set app icon with padding so it doesn't appear oversized in Dock
+        if let iconURL = Bundle.module.url(forResource: "les", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            let size = NSSize(width: 1024, height: 1024)
+            let padded = NSImage(size: size, flipped: false) { rect in
+                let inset: CGFloat = 100
+                let iconRect = rect.insetBy(dx: inset, dy: inset)
+                icon.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+                return true
+            }
+            NSApp.applicationIconImage = padded
+        }
+
         buildMainMenu()
 
         mainWindowController = MainWindowController()
@@ -48,6 +61,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "Quit les", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
+
+        // Edit menu (required for Cmd+C/V/X/A in text fields)
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
 
         // File menu
         let fileMenuItem = NSMenuItem()

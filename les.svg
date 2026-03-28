@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="200" fill="#E8D8BF"/>
+
+  <!-- subtle focus/selection field -->
+  <rect x="210" y="392" width="604" height="300" rx="96"
+        fill="#1F1A16" opacity="0.055"/>
+
+  <text x="512" y="612"
+        text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
+        font-size="252"
+        letter-spacing="-22"
+        fill="#1F1A16">les</text>
+</svg>
+

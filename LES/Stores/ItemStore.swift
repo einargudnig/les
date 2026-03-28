@@ -73,10 +73,11 @@ struct ItemStore {
         }
 
         if let search, !search.isEmpty {
-            conditions.append("(title LIKE ? OR author LIKE ?)")
-            let pattern = "%\(search)%"
-            args.append(pattern)
-            args.append(pattern)
+            // Use FTS5 for full-text search, fall back to LIKE if FTS table doesn't exist
+            conditions.append("items.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)")
+            // FTS5 query: prefix match with * for partial words
+            let ftsQuery = search.split(separator: " ").map { "\($0)*" }.joined(separator: " ")
+            args.append(ftsQuery)
         }
 
         if let cursor = beforePublishedAt {

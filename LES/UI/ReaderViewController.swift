@@ -4,7 +4,7 @@ import WebKit
 class ReaderViewController: NSViewController {
     private(set) var textView: NSTextView!
     private var textScrollView: NSScrollView!
-    private var webView: WKWebView!
+    private var webView: WKWebView?
     private var titleLabel: NSTextField!
     private var metaLabel: NSTextField!
     private var separatorView: NSView!
@@ -70,17 +70,10 @@ class ReaderViewController: NSViewController {
 
         textScrollView.documentView = textView
 
-        // Web view for bookmarks
-        let config = WKWebViewConfiguration()
-        webView = WKWebView(frame: .zero, configuration: config)
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        webView.isHidden = true
-
         containerView.addSubview(titleLabel)
         containerView.addSubview(metaLabel)
         containerView.addSubview(separatorView)
         containerView.addSubview(textScrollView)
-        containerView.addSubview(webView)
 
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 28),
@@ -96,17 +89,10 @@ class ReaderViewController: NSViewController {
             separatorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
             separatorView.heightAnchor.constraint(equalToConstant: 1),
 
-            // Text scroll view fills below separator
             textScrollView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
             textScrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             textScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             textScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-
-            // Web view fills below separator (same position, toggled via isHidden)
-            webView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
-            webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
         ])
 
         self.view = containerView
@@ -139,7 +125,7 @@ class ReaderViewController: NSViewController {
         if content.isBookmark, let urlStr = content.url, let url = URL(string: urlStr) {
             // Bookmark: load the full page in WKWebView
             showWebView()
-            webView.load(URLRequest(url: url))
+            ensureWebView().load(URLRequest(url: url))
         } else {
             // RSS: render with text renderer
             showTextView()
@@ -153,19 +139,38 @@ class ReaderViewController: NSViewController {
         metaLabel.stringValue = ""
         separatorView.isHidden = true
         textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
-        webView.loadHTMLString("", baseURL: nil)
+        webView?.loadHTMLString("", baseURL: nil)
         showTextView()
+    }
+
+    // MARK: - Lazy WKWebView
+
+    private func ensureWebView() -> WKWebView {
+        if let existing = webView { return existing }
+        let config = WKWebViewConfiguration()
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.translatesAutoresizingMaskIntoConstraints = false
+        wv.isHidden = true
+        containerView.addSubview(wv)
+        NSLayoutConstraint.activate([
+            wv.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
+            wv.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            wv.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+        ])
+        webView = wv
+        return wv
     }
 
     // MARK: - View switching
 
     private func showWebView() {
         textScrollView.isHidden = true
-        webView.isHidden = false
+        ensureWebView().isHidden = false
     }
 
     private func showTextView() {
-        webView.isHidden = true
+        webView?.isHidden = true
         textScrollView.isHidden = false
     }
 
@@ -209,8 +214,8 @@ class ReaderViewController: NSViewController {
     private let scrollStep: CGFloat = 60
 
     func scrollDown() {
-        if !webView.isHidden {
-            webView.evaluateJavaScript("window.scrollBy(0, 60)")
+        if let wv = webView, !wv.isHidden {
+            wv.evaluateJavaScript("window.scrollBy(0, 60)")
         } else {
             let clipView = textScrollView.contentView
             var origin = clipView.bounds.origin
@@ -221,8 +226,8 @@ class ReaderViewController: NSViewController {
     }
 
     func scrollUp() {
-        if !webView.isHidden {
-            webView.evaluateJavaScript("window.scrollBy(0, -60)")
+        if let wv = webView, !wv.isHidden {
+            wv.evaluateJavaScript("window.scrollBy(0, -60)")
         } else {
             let clipView = textScrollView.contentView
             var origin = clipView.bounds.origin

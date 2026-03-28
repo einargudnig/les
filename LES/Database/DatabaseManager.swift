@@ -146,6 +146,46 @@ final class DatabaseManager {
             try db.create(index: "idx_items_bookmarkId", on: "items", columns: ["bookmarkId"])
         }
 
+        migrator.registerMigration("v3_fts5") { db in
+            // FTS5 virtual table for full-text search
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+                    title,
+                    author,
+                    contentText,
+                    content='',
+                    tokenize='porter unicode61'
+                )
+            """)
+
+            // Populate from existing items — strip HTML tags for contentText
+            // We store plain text only in the FTS table
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT rowid, id, title, author,
+                    REPLACE(REPLACE(REPLACE(contentHTML, '<', ' <'), '>', '> '), '  ', ' ') as raw
+                FROM items
+                WHERE title IS NOT NULL
+            """)
+            for row in rows {
+                let rowid: Int64 = row["rowid"]
+                let title: String = row["title"] ?? ""
+                let author: String = row["author"] ?? ""
+                let raw: String = row["raw"] ?? ""
+                let plain = Self.stripHTMLTags(raw)
+                try db.execute(
+                    sql: "INSERT INTO items_fts(rowid, title, author, contentText) VALUES (?, ?, ?, ?)",
+                    arguments: [rowid, title, author, plain]
+                )
+            }
+        }
+
         return migrator
+    }
+
+    /// Strip HTML tags from a string (used during FTS indexing)
+    static func stripHTMLTags(_ html: String) -> String {
+        html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
     }
 }

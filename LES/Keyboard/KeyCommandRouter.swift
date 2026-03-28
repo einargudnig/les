@@ -103,6 +103,9 @@ class KeyWindow: NSWindow {
         case "b":
             performAction(.addBookmark)
             return true
+        case "?":
+            performAction(.showHelp)
+            return true
         default:
             break
         }
@@ -169,6 +172,8 @@ class KeyWindow: NSWindow {
             wc.refreshAllFeeds(nil)
         case .addBookmark:
             wc.addBookmark(nil)
+        case .showHelp:
+            KeyboardHelpPanel.toggle(relativeTo: self)
         case .scrollDown:
             wc.readerVC?.scrollDown()
         case .scrollUp:
@@ -211,5 +216,6 @@ private enum VimAction {
     case refreshCurrentFeed, refreshAllFeeds
     case scrollDown, scrollUp
     case addBookmark
+    case showHelp
     case escape
 }

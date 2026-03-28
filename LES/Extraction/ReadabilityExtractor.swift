@@ -126,12 +126,18 @@ final class ReadabilityExtractor {
         // Also score all divs/sections/articles in the tree
         scoreDeeply(element: body, bestNode: &bestNode, bestScore: &bestScore, depth: 0)
 
-        guard let winner = bestNode else { return nil }
+        let winner = bestNode ?? body
 
         // Clean the winner and return
         stripJunk(from: winner)
         let html = winner.xmlString(options: [.nodePreserveWhitespace])
-        return html.isEmpty ? nil : html
+
+        // If result is too short, it's probably not useful content
+        let plainText = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if plainText.count < 50 { return nil }
+
+        return html
     }
 
     private func findCandidates(in body: XMLElement) -> [XMLElement] {
