@@ -16,7 +16,8 @@ struct FeedStore {
                     title: feed.title ?? feed.url,
                     folder: feed.folder,
                     unreadCount: unreadCount,
-                    isMuted: feed.isMuted
+                    isMuted: feed.isMuted,
+                    hasError: feed.errorCount > 0
                 )
             }
         }

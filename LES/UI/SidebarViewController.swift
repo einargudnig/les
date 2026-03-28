@@ -55,7 +55,7 @@ private class FolderItem: NSObject {
 }
 
 private class FeedItem: NSObject {
-    let viewModel: FeedRecord.RowViewModel
+    var viewModel: FeedRecord.RowViewModel
 
     init(_ viewModel: FeedRecord.RowViewModel) {
         self.viewModel = viewModel
@@ -66,6 +66,9 @@ private class FeedItem: NSObject {
 
 class SidebarViewController: NSViewController {
     var onSelectionChanged: ((SidebarSelection) -> Void)?
+    var onDeleteFeed: ((Int64) -> Void)?
+    var onMarkAllRead: ((Int64) -> Void)?
+    var onMarkAllReadGlobal: (() -> Void)?
     private(set) var outlineView: NSOutlineView!
     private var scrollView: NSScrollView!
 
@@ -121,6 +124,11 @@ class SidebarViewController: NSViewController {
         outlineView.delegate = self
         outlineView.dataSource = self
 
+        // Context menu
+        let menu = NSMenu()
+        menu.delegate = self
+        outlineView.menu = menu
+
         scrollView.documentView = outlineView
         container.addSubview(scrollView)
 
@@ -139,23 +147,9 @@ class SidebarViewController: NSViewController {
         reloadData()
     }
 
+    /// Full reload — updates counts and rebuilds feed list
     func reloadData() {
-        // Load smart view counts
-        do {
-            let store = ItemStore(db: DatabaseManager.shared.dbPool)
-            for svItem in smartViewItems {
-                switch svItem.smartView {
-                case .inbox:
-                    svItem.count = try store.inboxUnreadCount()
-                case .readingList:
-                    svItem.count = try store.readingListUnreadCount()
-                case .starred:
-                    svItem.count = try store.starredCount()
-                case .today:
-                    svItem.count = try store.todayUnreadCount()
-                }
-            }
-        } catch {}
+        updateCounts()
 
         // Load feeds
         do {
@@ -172,6 +166,59 @@ class SidebarViewController: NSViewController {
                 outlineView.expandItem(item)
             }
         }
+    }
+
+    private func updateCounts() {
+        do {
+            let store = ItemStore(db: DatabaseManager.shared.dbPool)
+            for svItem in smartViewItems {
+                switch svItem.smartView {
+                case .inbox:
+                    svItem.count = try store.inboxUnreadCount()
+                case .readingList:
+                    svItem.count = try store.readingListUnreadCount()
+                case .starred:
+                    svItem.count = try store.starredCount()
+                case .today:
+                    svItem.count = try store.todayUnreadCount()
+                }
+            }
+        } catch {}
+    }
+
+    /// Lightweight refresh — updates counts and redraws visible rows without rebuilding the tree
+    func refreshCounts() {
+        updateCounts()
+
+        // Also refresh feed unread counts
+        do {
+            let feedStore = FeedStore(db: DatabaseManager.shared.dbPool)
+            let feeds = try feedStore.listFeeds()
+            let feedMap = Dictionary(uniqueKeysWithValues: feeds.map { ($0.id, $0) })
+
+            // Update existing feed items in place
+            func updateFeeds(in items: [AnyObject]) {
+                for item in items {
+                    if let feedItem = item as? FeedItem,
+                       let updated = feedMap[feedItem.viewModel.id] {
+                        feedItem.viewModel = updated
+                    }
+                    if let folder = item as? FolderItem {
+                        for fi in folder.feeds {
+                            if let updated = feedMap[fi.viewModel.id] {
+                                fi.viewModel = updated
+                            }
+                        }
+                    }
+                }
+            }
+            updateFeeds(in: feedRootItems)
+        } catch {}
+
+        // Redraw visible rows without reloading tree structure
+        let visibleRows = outlineView.rows(in: outlineView.visibleRect)
+        outlineView.reloadData(forRowIndexes: IndexSet(integersIn: visibleRows.lowerBound..<visibleRows.upperBound),
+                               columnIndexes: IndexSet(integer: 0))
     }
 
     private func buildFeedItems(from feeds: [FeedRecord.RowViewModel]) {
@@ -322,7 +369,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
             let cellID = NSUserInterfaceItemIdentifier("FeedCell")
             let cell = outlineView.makeView(withIdentifier: cellID, owner: self) as? FeedCellView
                 ?? FeedCellView(identifier: cellID, accentColor: accentColor)
-            cell.configure(title: feedItem.viewModel.title, unreadCount: feedItem.viewModel.unreadCount, isMuted: feedItem.viewModel.isMuted)
+            cell.configure(title: feedItem.viewModel.title, unreadCount: feedItem.viewModel.unreadCount, isMuted: feedItem.viewModel.isMuted, hasError: feedItem.viewModel.hasError)
             return cell
         }
 
@@ -468,17 +515,75 @@ private class FeedCellView: NSTableCellView {
         ])
     }
 
-    func configure(title: String, unreadCount: Int, isMuted: Bool) {
-        titleField.stringValue = title
+    func configure(title: String, unreadCount: Int, isMuted: Bool, hasError: Bool) {
+        var displayTitle = title
+        if hasError { displayTitle = "⚠ " + title }
+        titleField.stringValue = displayTitle
         titleField.font = .systemFont(ofSize: 13, weight: unreadCount > 0 ? .medium : .regular)
-        titleField.textColor = isMuted ? .tertiaryLabelColor : .labelColor
+        titleField.textColor = hasError ? .systemOrange : (isMuted ? .tertiaryLabelColor : .labelColor)
 
         if unreadCount > 0 {
             countBadge.stringValue = "\(unreadCount)"
-            countBadge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            countBadge.font = Theme.badgeFont
             countBadge.isHidden = false
         } else {
             countBadge.isHidden = true
         }
+    }
+}
+
+// MARK: - Context Menu
+
+extension SidebarViewController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let clickedRow = outlineView.clickedRow
+        guard clickedRow >= 0 else { return }
+        let item = outlineView.item(atRow: clickedRow)
+
+        if let feedItem = item as? FeedItem {
+            let markReadItem = NSMenuItem(title: "Mark All as Read", action: #selector(contextMarkAllRead(_:)), keyEquivalent: "")
+            markReadItem.representedObject = feedItem.viewModel.id
+            markReadItem.target = self
+            menu.addItem(markReadItem)
+
+            menu.addItem(.separator())
+
+            let deleteItem = NSMenuItem(title: "Remove Feed", action: #selector(contextDeleteFeed(_:)), keyEquivalent: "")
+            deleteItem.representedObject = feedItem.viewModel.id
+            deleteItem.target = self
+            menu.addItem(deleteItem)
+        }
+
+        if let svItem = item as? SmartViewItem, svItem.smartView == .inbox {
+            let markAllItem = NSMenuItem(title: "Mark All as Read", action: #selector(contextMarkAllReadGlobal(_:)), keyEquivalent: "")
+            markAllItem.target = self
+            menu.addItem(markAllItem)
+        }
+    }
+
+    @objc private func contextDeleteFeed(_ sender: NSMenuItem) {
+        guard let feedId = sender.representedObject as? Int64 else { return }
+        let alert = NSAlert()
+        alert.messageText = "Remove Feed?"
+        alert.informativeText = "This will delete the feed and all its items."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = view.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.onDeleteFeed?(feedId)
+        }
+    }
+
+    @objc private func contextMarkAllRead(_ sender: NSMenuItem) {
+        guard let feedId = sender.representedObject as? Int64 else { return }
+        onMarkAllRead?(feedId)
+    }
+
+    @objc private func contextMarkAllReadGlobal(_ sender: NSMenuItem) {
+        onMarkAllReadGlobal?()
     }
 }

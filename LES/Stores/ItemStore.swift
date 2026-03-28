@@ -157,6 +157,21 @@ struct ItemStore {
         }
     }
 
+    func markAllRead() throws {
+        try db.write { db in
+            try db.execute(
+                sql: "UPDATE items SET readAt = ? WHERE readAt IS NULL",
+                arguments: [Date().timeIntervalSince1970]
+            )
+        }
+    }
+
+    func deleteItem(id: String) throws {
+        try db.write { db in
+            try db.execute(sql: "DELETE FROM items WHERE id = ?", arguments: [id])
+        }
+    }
+
     func unreadCount(feedId: Int64? = nil) throws -> Int {
         try db.read { db in
             var sql = "SELECT COUNT(*) FROM items WHERE readAt IS NULL"

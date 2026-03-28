@@ -2,6 +2,7 @@ import Cocoa
 
 class ItemsViewController: NSViewController {
     var onItemSelected: ((String) -> Void)?
+    var onReadStateChanged: (() -> Void)?
     private(set) var tableView: NSTableView!
     private var scrollView: NSScrollView!
     private var searchField: NSSearchField!
@@ -9,6 +10,7 @@ class ItemsViewController: NSViewController {
     private var items: [ItemRecord.RowViewModel] = []
     private var currentFeedId: Int64?
     private var currentFilter: ItemFilter = .all
+    private var markReadTimer: Timer?
     private var currentSearch: String?
 
     private let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -69,6 +71,11 @@ class ItemsViewController: NSViewController {
         tableView.delegate = self
         tableView.dataSource = self
 
+        // Context menu
+        let menu = NSMenu()
+        menu.delegate = self
+        tableView.menu = menu
+
         scrollView.documentView = tableView
         container.addSubview(scrollView)
 
@@ -118,6 +125,14 @@ class ItemsViewController: NSViewController {
 
     func reload() {
         loadItems(append: false)
+    }
+
+    private func reloadKeepingSelection() {
+        let previousId = selectedItemId
+        loadItems(append: false)
+        if let previousId, let index = items.firstIndex(where: { $0.id == previousId }) {
+            tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        }
     }
 
     func focusSearch() {
@@ -239,6 +254,7 @@ class ItemsViewController: NSViewController {
         guard let id = selectedItemId else { return }
         try? ItemStore(db: DatabaseManager.shared.dbPool).toggleRead(id: id)
         loadItems(append: false)
+        onReadStateChanged?()
     }
 
     func toggleStarCurrent() {
@@ -257,8 +273,15 @@ class ItemsViewController: NSViewController {
 
     private func notifySelection() {
         guard let id = selectedItemId else { return }
-        try? ItemStore(db: DatabaseManager.shared.dbPool).markRead(id: id)
         onItemSelected?(id)
+
+        // Mark read after a short delay — avoids marking items when just browsing
+        markReadTimer?.invalidate()
+        markReadTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            try? ItemStore(db: DatabaseManager.shared.dbPool).markRead(id: id)
+            self?.reloadKeepingSelection()
+            self?.onReadStateChanged?()
+        }
     }
 }
 
@@ -302,6 +325,95 @@ extension ItemsViewController: NSTableViewDelegate {
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         notifySelection()
+    }
+}
+
+// MARK: - Context Menu
+
+extension ItemsViewController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let clickedRow = tableView.clickedRow
+        guard clickedRow >= 0, clickedRow < items.count else { return }
+        let item = items[clickedRow]
+
+        // Toggle read
+        let readTitle = item.isRead ? "Mark as Unread" : "Mark as Read"
+        let readItem = NSMenuItem(title: readTitle, action: #selector(contextToggleRead(_:)), keyEquivalent: "")
+        readItem.tag = clickedRow
+        readItem.target = self
+        menu.addItem(readItem)
+
+        // Toggle star
+        let starTitle = item.isStarred ? "Unstar" : "Star"
+        let starItem = NSMenuItem(title: starTitle, action: #selector(contextToggleStar(_:)), keyEquivalent: "")
+        starItem.tag = clickedRow
+        starItem.target = self
+        menu.addItem(starItem)
+
+        menu.addItem(.separator())
+
+        // Open in browser
+        if item.url != nil {
+            let openItem = NSMenuItem(title: "Open in Browser", action: #selector(contextOpenInBrowser(_:)), keyEquivalent: "")
+            openItem.tag = clickedRow
+            openItem.target = self
+            menu.addItem(openItem)
+
+            // Copy link
+            let copyItem = NSMenuItem(title: "Copy Link", action: #selector(contextCopyLink(_:)), keyEquivalent: "")
+            copyItem.tag = clickedRow
+            copyItem.target = self
+            menu.addItem(copyItem)
+
+            menu.addItem(.separator())
+        }
+
+        // Delete (bookmarks only)
+        if item.isBookmark {
+            let deleteItem = NSMenuItem(title: "Remove Bookmark", action: #selector(contextDeleteItem(_:)), keyEquivalent: "")
+            deleteItem.tag = clickedRow
+            deleteItem.target = self
+            menu.addItem(deleteItem)
+        }
+    }
+
+    @objc private func contextToggleRead(_ sender: NSMenuItem) {
+        let row = sender.tag
+        guard row < items.count else { return }
+        try? ItemStore(db: DatabaseManager.shared.dbPool).toggleRead(id: items[row].id)
+        loadItems(append: false)
+        onReadStateChanged?()
+    }
+
+    @objc private func contextToggleStar(_ sender: NSMenuItem) {
+        let row = sender.tag
+        guard row < items.count else { return }
+        try? ItemStore(db: DatabaseManager.shared.dbPool).toggleStar(id: items[row].id)
+        loadItems(append: false)
+        onReadStateChanged?()
+    }
+
+    @objc private func contextOpenInBrowser(_ sender: NSMenuItem) {
+        let row = sender.tag
+        guard row < items.count, let urlStr = items[row].url, let url = URL(string: urlStr) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func contextCopyLink(_ sender: NSMenuItem) {
+        let row = sender.tag
+        guard row < items.count, let urlStr = items[row].url else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(urlStr, forType: .string)
+    }
+
+    @objc private func contextDeleteItem(_ sender: NSMenuItem) {
+        let row = sender.tag
+        guard row < items.count else { return }
+        try? ItemStore(db: DatabaseManager.shared.dbPool).deleteItem(id: items[row].id)
+        loadItems(append: false)
+        onReadStateChanged?()
     }
 }
 

@@ -21,6 +21,7 @@ class MainWindowController: NSWindowController {
 
         self.init(window: window)
         setupSplitView()
+        setupToolbar()
     }
 
     private func setupSplitView() {
@@ -62,6 +63,29 @@ class MainWindowController: NSWindowController {
         itemsVC.onItemSelected = { [weak self] itemId in
             self?.readerVC.showItem(itemId: itemId)
         }
+
+        itemsVC.onReadStateChanged = { [weak self] in
+            self?.sidebarVC?.refreshCounts()
+        }
+
+        sidebarVC.onDeleteFeed = { [weak self] feedId in
+            try? FeedStore(db: DatabaseManager.shared.dbPool).deleteFeed(id: feedId)
+            self?.sidebarVC?.reloadData()
+            self?.itemsVC?.reload()
+            self?.readerVC?.clear()
+        }
+
+        sidebarVC.onMarkAllRead = { [weak self] feedId in
+            try? ItemStore(db: DatabaseManager.shared.dbPool).markAllRead(feedId: feedId)
+            self?.sidebarVC?.reloadData()
+            self?.itemsVC?.reload()
+        }
+
+        sidebarVC.onMarkAllReadGlobal = { [weak self] in
+            try? ItemStore(db: DatabaseManager.shared.dbPool).markAllRead()
+            self?.sidebarVC?.reloadData()
+            self?.itemsVC?.reload()
+        }
     }
 
     // MARK: - Actions (responder chain)
@@ -78,12 +102,30 @@ class MainWindowController: NSWindowController {
     }
 
     @objc func refreshAllFeeds(_ sender: Any?) {
+        showRefreshSpinner(true)
         Task {
             await RefreshScheduler.shared.refreshAllFeeds()
             await MainActor.run {
+                self.showRefreshSpinner(false)
                 self.sidebarVC?.reloadData()
                 self.itemsVC?.reload()
             }
+        }
+    }
+
+    private func showRefreshSpinner(_ show: Bool) {
+        guard let toolbar = window?.toolbar,
+              let item = toolbar.items.first(where: { $0.itemIdentifier == .refreshAll }) else { return }
+        if show {
+            let spinner = NSProgressIndicator()
+            spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.frame = NSRect(x: 0, y: 0, width: 18, height: 18)
+            spinner.startAnimation(nil)
+            item.view = spinner
+        } else {
+            item.view = nil
+            item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
         }
     }
 
@@ -205,5 +247,66 @@ class MainWindowController: NSWindowController {
 
     func focusSearch() {
         itemsVC?.focusSearch()
+    }
+
+    // MARK: - Toolbar
+
+    private func setupToolbar() {
+        let toolbar = NSToolbar(identifier: "MainToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window?.toolbar = toolbar
+    }
+}
+
+// MARK: - NSToolbarDelegate
+
+private extension NSToolbarItem.Identifier {
+    static let refreshAll = NSToolbarItem.Identifier("refreshAll")
+    static let addFeed = NSToolbarItem.Identifier("addFeed")
+    static let addBookmark = NSToolbarItem.Identifier("addBookmark")
+}
+
+extension MainWindowController: NSToolbarDelegate {
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case .refreshAll:
+            let item = NSToolbarItem(itemIdentifier: .refreshAll)
+            item.label = "Refresh"
+            item.toolTip = "Refresh all feeds"
+            item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+            item.target = self
+            item.action = #selector(refreshAllFeeds(_:))
+            return item
+
+        case .addFeed:
+            let item = NSToolbarItem(itemIdentifier: .addFeed)
+            item.label = "Add Feed"
+            item.toolTip = "Add RSS feed"
+            item.image = NSImage(systemSymbolName: "plus.circle", accessibilityDescription: "Add Feed")
+            item.target = self
+            item.action = #selector(addFeed(_:))
+            return item
+
+        case .addBookmark:
+            let item = NSToolbarItem(itemIdentifier: .addBookmark)
+            item.label = "Bookmark"
+            item.toolTip = "Add bookmark"
+            item.image = NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: "Add Bookmark")
+            item.target = self
+            item.action = #selector(addBookmark(_:))
+            return item
+
+        default:
+            return nil
+        }
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.addFeed, .addBookmark, .flexibleSpace, .refreshAll]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.addFeed, .addBookmark, .flexibleSpace, .refreshAll]
     }
 }

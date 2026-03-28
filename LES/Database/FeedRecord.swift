@@ -30,6 +30,7 @@ struct FeedRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
         let folder: String?
         let unreadCount: Int
         let isMuted: Bool
+        let hasError: Bool
     }
 }
 
