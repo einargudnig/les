@@ -112,8 +112,8 @@ class SidebarViewController: NSViewController {
 
         outlineView = NSOutlineView()
         outlineView.headerView = nil
-        outlineView.rowHeight = 28
-        outlineView.indentationPerLevel = 14
+        outlineView.rowHeight = Theme.sidebarRowHeight
+        outlineView.indentationPerLevel = Theme.spacingMD + 2
         outlineView.style = .sourceList
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("SidebarColumn"))
@@ -369,7 +369,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
             let cellID = NSUserInterfaceItemIdentifier("FeedCell")
             let cell = outlineView.makeView(withIdentifier: cellID, owner: self) as? FeedCellView
                 ?? FeedCellView(identifier: cellID, accentColor: accentColor)
-            cell.configure(title: feedItem.viewModel.title, unreadCount: feedItem.viewModel.unreadCount, isMuted: feedItem.viewModel.isMuted, hasError: feedItem.viewModel.hasError)
+            cell.configure(title: feedItem.viewModel.title, unreadCount: feedItem.viewModel.unreadCount, isMuted: feedItem.viewModel.isMuted, hasError: feedItem.viewModel.hasError, siteHost: feedItem.viewModel.siteHost)
             return cell
         }
 
@@ -390,8 +390,8 @@ extension SidebarViewController: NSOutlineViewDelegate {
         line.layer?.backgroundColor = NSColor.separatorColor.cgColor
         cell.addSubview(line)
         NSLayoutConstraint.activate([
-            line.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
-            line.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -12),
+            line.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Theme.spacingMD),
+            line.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -Theme.spacingMD),
             line.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             line.heightAnchor.constraint(equalToConstant: 1),
         ])
@@ -403,14 +403,14 @@ extension SidebarViewController: NSOutlineViewDelegate {
         cell.identifier = identifier
         let tf = NSTextField(labelWithString: "")
         tf.translatesAutoresizingMaskIntoConstraints = false
-        tf.font = .systemFont(ofSize: 10, weight: .semibold)
+        tf.font = Theme.sidebarSectionFont
         tf.textColor = .tertiaryLabelColor
         tf.lineBreakMode = .byTruncatingTail
         cell.addSubview(tf)
         cell.textField = tf
         NSLayoutConstraint.activate([
-            tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Theme.spacingSM),
+            tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -Theme.spacingSM),
             tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
@@ -450,16 +450,16 @@ private class SmartViewCellView: NSTableCellView {
         self.imageView = iconView
 
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.spacingSM),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 18),
             iconView.heightAnchor.constraint(equalToConstant: 18),
 
-            titleField.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
+            titleField.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.spacingSM),
             titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleField.trailingAnchor.constraint(lessThanOrEqualTo: countBadge.leadingAnchor, constant: -6),
+            titleField.trailingAnchor.constraint(lessThanOrEqualTo: countBadge.leadingAnchor, constant: -Theme.spacingSM),
 
-            countBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            countBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.spacingMD),
             countBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
@@ -483,12 +483,20 @@ private class SmartViewCellView: NSTableCellView {
 // MARK: - FeedCellView (same as old FeedsViewController)
 
 private class FeedCellView: NSTableCellView {
+    private let faviconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
     private let countBadge = NSTextField(labelWithString: "")
 
     convenience init(identifier: NSUserInterfaceItemIdentifier, accentColor: NSColor) {
         self.init()
         self.identifier = identifier
+
+        faviconView.translatesAutoresizingMaskIntoConstraints = false
+        faviconView.wantsLayer = true
+        faviconView.layer?.cornerRadius = Theme.radiusSM
+        faviconView.layer?.masksToBounds = true
+        faviconView.imageScaling = .scaleProportionallyDown
+        addSubview(faviconView)
 
         titleField.translatesAutoresizingMaskIntoConstraints = false
         titleField.lineBreakMode = .byTruncatingTail
@@ -497,7 +505,7 @@ private class FeedCellView: NSTableCellView {
         countBadge.translatesAutoresizingMaskIntoConstraints = false
         countBadge.alignment = .center
         countBadge.wantsLayer = true
-        countBadge.layer?.cornerRadius = 6
+        countBadge.layer?.cornerRadius = Theme.radiusMD
         countBadge.isBezeled = false
         countBadge.drawsBackground = false
         countBadge.textColor = accentColor
@@ -506,16 +514,32 @@ private class FeedCellView: NSTableCellView {
         self.textField = titleField
 
         NSLayoutConstraint.activate([
-            titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleField.trailingAnchor.constraint(lessThanOrEqualTo: countBadge.leadingAnchor, constant: -6),
+            faviconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.spacingSM),
+            faviconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            faviconView.widthAnchor.constraint(equalToConstant: 16),
+            faviconView.heightAnchor.constraint(equalToConstant: 16),
 
-            countBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            titleField.leadingAnchor.constraint(equalTo: faviconView.trailingAnchor, constant: Theme.spacingSM),
+            titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleField.trailingAnchor.constraint(lessThanOrEqualTo: countBadge.leadingAnchor, constant: -Theme.spacingSM),
+
+            countBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.spacingMD),
             countBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
-    func configure(title: String, unreadCount: Int, isMuted: Bool, hasError: Bool) {
+    func configure(title: String, unreadCount: Int, isMuted: Bool, hasError: Bool, siteHost: String?) {
+        // Load favicon async
+        if let host = siteHost, let faviconURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=32") {
+            faviconView.isHidden = false
+            Task {
+                if let image = await ImageCache.shared.image(for: faviconURL) {
+                    await MainActor.run { self.faviconView.image = image }
+                }
+            }
+        } else {
+            faviconView.isHidden = true
+        }
         var displayTitle = title
         if hasError { displayTitle = "⚠ " + title }
         titleField.stringValue = displayTitle

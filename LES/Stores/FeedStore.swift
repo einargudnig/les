@@ -11,10 +11,12 @@ struct FeedStore {
                 let unreadCount = try ItemRecord
                     .filter(Column("feedId") == feed.id && Column("readAt") == nil)
                     .fetchCount(db)
+                let host = (feed.siteURL ?? feed.url).flatMap { URL(string: $0)?.host } ?? URL(string: feed.url)?.host
                 return FeedRecord.RowViewModel(
                     id: feed.id!,
                     title: feed.title ?? feed.url,
                     folder: feed.folder,
+                    siteHost: host,
                     unreadCount: unreadCount,
                     isMuted: feed.isMuted,
                     hasError: feed.errorCount > 0

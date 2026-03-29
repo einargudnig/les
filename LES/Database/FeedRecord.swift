@@ -28,6 +28,7 @@ struct FeedRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
         let id: Int64
         let title: String
         let folder: String?
+        let siteHost: String?
         let unreadCount: Int
         let isMuted: Bool
         let hasError: Bool

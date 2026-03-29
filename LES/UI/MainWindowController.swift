@@ -66,6 +66,7 @@ class MainWindowController: NSWindowController {
 
         itemsVC.onReadStateChanged = { [weak self] in
             self?.sidebarVC?.refreshCounts()
+            self?.updateWindowTitle()
         }
 
         sidebarVC.onDeleteFeed = { [weak self] feedId in
@@ -79,13 +80,17 @@ class MainWindowController: NSWindowController {
             try? ItemStore(db: DatabaseManager.shared.dbPool).markAllRead(feedId: feedId)
             self?.sidebarVC?.reloadData()
             self?.itemsVC?.reload()
+            self?.updateWindowTitle()
         }
 
         sidebarVC.onMarkAllReadGlobal = { [weak self] in
             try? ItemStore(db: DatabaseManager.shared.dbPool).markAllRead()
             self?.sidebarVC?.reloadData()
             self?.itemsVC?.reload()
+            self?.updateWindowTitle()
         }
+
+        updateWindowTitle()
     }
 
     // MARK: - Actions (responder chain)
@@ -109,6 +114,7 @@ class MainWindowController: NSWindowController {
                 self.showRefreshSpinner(false)
                 self.sidebarVC?.reloadData()
                 self.itemsVC?.reload()
+                self.updateWindowTitle()
             }
         }
     }
@@ -247,6 +253,11 @@ class MainWindowController: NSWindowController {
 
     func focusSearch() {
         itemsVC?.focusSearch()
+    }
+
+    func updateWindowTitle() {
+        let count = (try? ItemStore(db: DatabaseManager.shared.dbPool).inboxUnreadCount()) ?? 0
+        window?.title = count > 0 ? "les (\(count))" : "les"
     }
 
     // MARK: - Toolbar

@@ -12,6 +12,7 @@ class ItemsViewController: NSViewController {
     private var currentFilter: ItemFilter = .all
     private var markReadTimer: Timer?
     private var currentSearch: String?
+    private var emptyLabel: NSTextField!
 
     private let relativeDateFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -39,10 +40,10 @@ class ItemsViewController: NSViewController {
         searchField = NSSearchField()
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchField.placeholderString = "Search"
-        searchField.font = .systemFont(ofSize: 12, weight: .regular)
+        searchField.font = Theme.itemDetailFont
         searchField.focusRingType = .none
         searchField.wantsLayer = true
-        searchField.layer?.cornerRadius = 8
+        searchField.layer?.cornerRadius = Theme.radiusLG
         searchField.target = self
         searchField.action = #selector(searchChanged(_:))
         container.addSubview(searchField)
@@ -80,15 +81,29 @@ class ItemsViewController: NSViewController {
         container.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
-            searchField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            searchField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            searchField.heightAnchor.constraint(equalToConstant: 24),
+            searchField.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.spacingMD),
+            searchField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.spacingMD),
+            searchField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.spacingMD),
+            searchField.heightAnchor.constraint(equalToConstant: Theme.spacingXL),
 
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 10),
+            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: Theme.spacingSM),
             scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        // Empty state label
+        emptyLabel = NSTextField(labelWithString: "No items")
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        emptyLabel.textColor = Theme.tertiaryText
+        emptyLabel.alignment = .center
+        emptyLabel.isHidden = true
+        container.addSubview(emptyLabel)
+
+        NSLayoutConstraint.activate([
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
 
         self.view = container
@@ -139,6 +154,36 @@ class ItemsViewController: NSViewController {
         view.window?.makeFirstResponder(searchField)
     }
 
+    private func showToast(_ message: String) {
+        guard let wc = view.window?.windowController as? MainWindowController else { return }
+        let previous = view.window?.title ?? "les"
+        view.window?.title = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            wc.updateWindowTitle()
+        }
+    }
+
+    private func updateEmptyState() {
+        if items.isEmpty {
+            let message: String
+            if currentSearch != nil && !currentSearch!.isEmpty {
+                message = "No results"
+            } else {
+                switch currentFilter {
+                case .unread: message = "All caught up"
+                case .starred: message = "No starred items"
+                case .readingList: message = "No bookmarks yet"
+                case .today: message = "Nothing new today"
+                default: message = "No items"
+                }
+            }
+            emptyLabel.stringValue = message
+            emptyLabel.isHidden = false
+        } else {
+            emptyLabel.isHidden = true
+        }
+    }
+
     @objc private func searchChanged(_ sender: NSSearchField) {
         currentSearch = sender.stringValue.isEmpty ? nil : sender.stringValue
         loadItems(append: false)
@@ -161,6 +206,7 @@ class ItemsViewController: NSViewController {
                 items = newItems
             }
             tableView.reloadData()
+            updateEmptyState()
         } catch {
             // Silently handle
         }
@@ -251,16 +297,21 @@ class ItemsViewController: NSViewController {
     }
 
     func toggleReadCurrent() {
-        guard let id = selectedItemId else { return }
+        guard let id = selectedItemId, let row = items.firstIndex(where: { $0.id == id }) else { return }
+        let wasRead = items[row].isRead
         try? ItemStore(db: DatabaseManager.shared.dbPool).toggleRead(id: id)
-        loadItems(append: false)
+        reloadKeepingSelection()
         onReadStateChanged?()
+        showToast(wasRead ? "Marked unread" : "Marked read")
     }
 
     func toggleStarCurrent() {
-        guard let id = selectedItemId else { return }
+        guard let id = selectedItemId, let row = items.firstIndex(where: { $0.id == id }) else { return }
+        let wasStarred = items[row].isStarred
         try? ItemStore(db: DatabaseManager.shared.dbPool).toggleStar(id: id)
-        loadItems(append: false)
+        reloadKeepingSelection()
+        onReadStateChanged?()
+        showToast(wasStarred ? "Unstarred" : "Starred")
     }
 
     func openCurrentInBrowser() {
@@ -406,6 +457,7 @@ extension ItemsViewController: NSMenuDelegate {
         guard row < items.count, let urlStr = items[row].url else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(urlStr, forType: .string)
+        showToast("Link copied")
     }
 
     @objc private func contextDeleteItem(_ sender: NSMenuItem) {
@@ -459,30 +511,30 @@ private class ItemCellView: NSTableCellView {
 
         NSLayoutConstraint.activate([
             // Unread dot — left edge
-            unreadDot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            unreadDot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.spacingMD),
             unreadDot.centerYAnchor.constraint(equalTo: centerYAnchor),
             unreadDot.widthAnchor.constraint(equalToConstant: 6),
             unreadDot.heightAnchor.constraint(equalToConstant: 6),
 
             // Title — top row
-            titleField.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            titleField.leadingAnchor.constraint(equalTo: unreadDot.trailingAnchor, constant: 8),
-            titleField.trailingAnchor.constraint(lessThanOrEqualTo: dateField.leadingAnchor, constant: -8),
+            titleField.topAnchor.constraint(equalTo: topAnchor, constant: Theme.spacingSM + 2),
+            titleField.leadingAnchor.constraint(equalTo: unreadDot.trailingAnchor, constant: Theme.spacingSM),
+            titleField.trailingAnchor.constraint(lessThanOrEqualTo: dateField.leadingAnchor, constant: -Theme.spacingSM),
 
             // Date — top right
             dateField.firstBaselineAnchor.constraint(equalTo: titleField.firstBaselineAnchor),
-            dateField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            dateField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.spacingMD),
 
             // Star + bookmark + author — bottom row
-            starLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
-            starLabel.leadingAnchor.constraint(equalTo: unreadDot.trailingAnchor, constant: 8),
+            starLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -(Theme.spacingSM + 2)),
+            starLabel.leadingAnchor.constraint(equalTo: unreadDot.trailingAnchor, constant: Theme.spacingSM),
 
             bookmarkLabel.firstBaselineAnchor.constraint(equalTo: starLabel.firstBaselineAnchor),
-            bookmarkLabel.leadingAnchor.constraint(equalTo: starLabel.trailingAnchor, constant: 2),
+            bookmarkLabel.leadingAnchor.constraint(equalTo: starLabel.trailingAnchor, constant: Theme.spacingXS),
 
             authorField.firstBaselineAnchor.constraint(equalTo: starLabel.firstBaselineAnchor),
-            authorField.leadingAnchor.constraint(equalTo: bookmarkLabel.trailingAnchor, constant: 2),
-            authorField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
+            authorField.leadingAnchor.constraint(equalTo: bookmarkLabel.trailingAnchor, constant: Theme.spacingXS),
+            authorField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Theme.spacingMD),
         ])
     }
 
